@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Best Maintenance Time Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #89f7fe 0%, #66a6ff 100%);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        #csvFile {
+            margin-top: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: 2px solid #ccc;
+            width: 98%;
+            font-size: 1em;
+            background-color: #f9f9f9;
+        }
+
+        button {
+            margin-top: 20px;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            background-color: #66a6ff;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: #557ed3;
+        }
+
+        #result {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f3faff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            font-size: 1.8em;
+            color: #444;
+        }
+
+        p {
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+
+        .highlight {
+            color: #66a6ff;
+            font-weight: bold;
+        }
+
+      
+        .option1 {
+            color: green;
+        }
+
+        .option2 {
+            color: orange;
+        }
+
+        .option3 {
+            color: red;
+        }
+        .option4 {
+            color: red;
+        }
+        .option5 {
+            color: red;
+        }
+
+        input[type="file"] {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Payments Maintenance Time Analyzer</h1>
+    <input type="file" id="csvFile" accept=".csv">
+    <button onclick="analyzeCSV()">Analyze</button>
+
+    <div id="result"></div>
+    <br>
+    Created by Nati
+</br>
+</div>
+
+<script>
+function analyzeCSV() {
+    const fileInput = document.getElementById('csvFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        alert("Please upload a CSV file.");
+        return;
+    }
+
+    Papa.parse(file, {
+        header: true,
+        complete: function(results) {
+            const data = results.data;
+            const hourDayMap = {};
+            const dayMap = {};
+
+            data.forEach(row => {
+                const hour = row['Payments Created Hour of Day'];
+                const day = row['Payments Created Day of Week'];
+                let payments = row['Payments Count Of Payments'];
+
+                if (!payments || isNaN(payments.replace(/,/g, ''))) {
+                    return; 
+                }
+
+                payments = parseInt(payments.replace(/,/g, ''), 10);
+
+                const key = day + '-' + hour;
+                if (!hourDayMap[key]) {
+                    hourDayMap[key] = { sum: 0, count: 0 };
+                }
+                hourDayMap[key].sum += payments;
+                hourDayMap[key].count += 1;
+
+                if (!dayMap[day]) {
+                    dayMap[day] = { sum: 0, count: 0 };
+                }
+                dayMap[day].sum += payments;
+                dayMap[day].count += 1;
+            });
+
+            const sortedHours = Object.keys(hourDayMap)
+                .map(key => {
+                    const avgPayments = hourDayMap[key].sum / hourDayMap[key].count;
+                    return { key, avgPayments };
+                })
+                .sort((a, b) => a.avgPayments - b.avgPayments); 
+
+            const top3Times = sortedHours.slice(0, 5);
+
+            let bestDay = null;
+            let lowestDayTraffic = Infinity;
+
+            for (const day in dayMap) {
+                const avgDayPayments = dayMap[day].sum / dayMap[day].count;
+                if (avgDayPayments < lowestDayTraffic) {
+                    lowestDayTraffic = avgDayPayments;
+                    bestDay = day;
+                }
+            }
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <h2>Best Times for Maintenance</h2>
+                <p>The best times for maintenance based on the lowest average traffic are:</p>
+                ${top3Times.map((time, index) => `
+                    <p class="option${index + 1}">
+                        <span class="highlight">Option ${index + 1}:</span><b> ${time.key.replace('-', ' at ')}<br>
+                        <span class="highlight">Average Payments:</span> ${time.avgPayments.toFixed(2)}
+                    </p>
+                `).join('')}
+                <p><span class="highlight">Worst day Overall:</span> ${bestDay}<br>
+                <span class="highlight">Average Payments:</span> ${lowestDayTraffic.toFixed(2)}</p>
+            `;
+        }
+    });
+}
+</script>
+
+</body>
+</html>
