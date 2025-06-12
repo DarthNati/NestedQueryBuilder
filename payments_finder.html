@@ -137,9 +137,9 @@ function analyzeCSV() {
             const dayMap = {};
 
             data.forEach(row => {
-                const hour = row['Payments Created Hour of Day'];
-                const day = row['Payments Created Day of Week'];
-                let payments = row['Payments Count Of Payments'];
+                const hour = row['Payments Created Hour of Day'] || "Created Hour of Day";
+                const day = row['Payments Created Day of Week'] || "Created Day of Week";
+                let payments = row['Payments Count Of Payments'] || "Payouts Count of Payouts";
 
                 if (!payments || isNaN(payments.replace(/,/g, ''))) {
                     return; 
