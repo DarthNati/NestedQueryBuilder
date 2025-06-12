@@ -22,7 +22,7 @@
             padding: 40px;
             border-radius: 12px;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
             text-align: center;
         }
@@ -59,12 +59,18 @@
             background-color: #557ed3;
         }
 
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
         #result {
             margin-top: 30px;
             padding: 20px;
             background-color: #f3faff;
             border-radius: 10px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: none;
         }
 
         h2 {
@@ -82,23 +88,30 @@
             font-weight: bold;
         }
 
-      
-        .option1 {
-            color: green;
+        .option1 { color: #28a745; }
+        .option2 { color: #17a2b8; }
+        .option3 { color: #ffc107; }
+        .option4 { color: #fd7e14; }
+        .option5 { color: #dc3545; }
+
+        .debug {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 0.9em;
+            text-align: left;
         }
 
-        .option2 {
-            color: orange;
-        }
-
-        .option3 {
-            color: red;
-        }
-        .option4 {
-            color: red;
-        }
-        .option5 {
-            color: red;
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
         }
 
         input[type="file"] {
@@ -111,89 +124,176 @@
 <div class="container">
     <h1>Payments Maintenance Time Analyzer</h1>
     <input type="file" id="csvFile" accept=".csv">
-    <button onclick="analyzeCSV()">Analyze</button>
+    <button onclick="analyzeCSV()" id="analyzeBtn">Analyze</button>
 
     <div id="result"></div>
     <br>
     Created by Nati
-</br>
+    </br>
 </div>
 
 <script>
 function analyzeCSV() {
     const fileInput = document.getElementById('csvFile');
     const file = fileInput.files[0];
+    const resultDiv = document.getElementById('result');
+    const analyzeBtn = document.getElementById('analyzeBtn');
 
     if (!file) {
         alert("Please upload a CSV file.");
         return;
     }
 
+    // Show loading state
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = 'Analyzing...';
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<p>Processing your CSV file...</p>';
+
     Papa.parse(file, {
         header: true,
+        skipEmptyLines: true,
         complete: function(results) {
-            const data = results.data;
-            const hourDayMap = {};
-            const dayMap = {};
+            try {
+                console.log('CSV parsed successfully');
+                console.log('Headers:', results.meta.fields);
+                console.log('Data rows:', results.data.length);
+                
+                const data = results.data;
+                const hourDayMap = {};
+                const dayMap = {};
+                let processedRows = 0;
+                let skippedRows = 0;
 
-            data.forEach(row => {
-                const hour = row['Payments Created Hour of Day'] || "Created Hour of Day";
-                const day = row['Payments Created Day of Week'] || "Created Day of Week";
-                let payments = row['Payments Count Of Payments'] || "Payouts Count of Payouts";
+                // Process each row
+                data.forEach((row, index) => {
+                    // Try both possible column names
+                    const hour = row['Payments Created Hour of Day'] || row['Created Hour of Day'];
+                    const day = row['Payments Created Day of Week'] || row['Created Day of Week'];
+                    let payments = row['Payments Count Of Payments'] || row['Payouts Count of Payouts'];
 
-                if (!payments || isNaN(payments.replace(/,/g, ''))) {
-                    return; 
+                    // Debug first few rows
+                    if (index < 3) {
+                        console.log(`Row ${index}:`, { hour, day, payments, row });
+                    }
+
+                    // Validate data
+                    if (!hour || !day || !payments) {
+                        skippedRows++;
+                        return;
+                    }
+
+                    // Clean and parse payments value
+                    const paymentsStr = String(payments).replace(/,/g, '');
+                    if (isNaN(paymentsStr) || paymentsStr === '') {
+                        skippedRows++;
+                        return;
+                    }
+
+                    const paymentsNum = parseInt(paymentsStr, 10);
+                    if (paymentsNum < 0) {
+                        skippedRows++;
+                        return;
+                    }
+
+                    processedRows++;
+
+                    // Store hour-day combination
+                    const key = `${day}-${hour}`;
+                    if (!hourDayMap[key]) {
+                        hourDayMap[key] = { sum: 0, count: 0 };
+                    }
+                    hourDayMap[key].sum += paymentsNum;
+                    hourDayMap[key].count += 1;
+
+                    // Store day totals
+                    if (!dayMap[day]) {
+                        dayMap[day] = { sum: 0, count: 0 };
+                    }
+                    dayMap[day].sum += paymentsNum;
+                    dayMap[day].count += 1;
+                });
+
+                console.log(`Processed ${processedRows} rows, skipped ${skippedRows} rows`);
+                console.log(`Hour-day combinations: ${Object.keys(hourDayMap).length}`);
+                console.log(`Days: ${Object.keys(dayMap).length}`);
+
+                // Check if we have any data
+                if (Object.keys(hourDayMap).length === 0) {
+                    throw new Error('No valid data found in CSV. Please check column names and data format.');
                 }
 
-                payments = parseInt(payments.replace(/,/g, ''), 10);
+                // Calculate best times (lowest traffic)
+                const sortedHours = Object.keys(hourDayMap)
+                    .map(key => {
+                        const avgPayments = hourDayMap[key].sum / hourDayMap[key].count;
+                        return { key, avgPayments };
+                    })
+                    .sort((a, b) => a.avgPayments - b.avgPayments);
 
-                const key = day + '-' + hour;
-                if (!hourDayMap[key]) {
-                    hourDayMap[key] = { sum: 0, count: 0 };
+                const top5Times = sortedHours.slice(0, 5);
+
+                // Find best day (lowest average traffic)
+                let bestDay = null;
+                let lowestDayTraffic = Infinity;
+
+                for (const day in dayMap) {
+                    const avgDayPayments = dayMap[day].sum / dayMap[day].count;
+                    if (avgDayPayments < lowestDayTraffic) {
+                        lowestDayTraffic = avgDayPayments;
+                        bestDay = day;
+                    }
                 }
-                hourDayMap[key].sum += payments;
-                hourDayMap[key].count += 1;
 
-                if (!dayMap[day]) {
-                    dayMap[day] = { sum: 0, count: 0 };
-                }
-                dayMap[day].sum += payments;
-                dayMap[day].count += 1;
-            });
+                // Display results
+                resultDiv.innerHTML = `
+                    <h2>Best Times for Maintenance</h2>
+                    <div class="debug">
+                        <strong>Analysis Summary:</strong><br>
+                        • Processed ${processedRows} rows<br>
+                        • Found ${Object.keys(hourDayMap).length} unique time slots<br>
+                        • Analyzed ${Object.keys(dayMap).length} days of the week
+                    </div>
+                    <p>The best times for maintenance based on the <strong>lowest average traffic</strong> are:</p>
+                    ${top5Times.map((time, index) => `
+                        <p class="option${index + 1}">
+                            <span class="highlight">Option ${index + 1}:</span> <b>${time.key.replace('-', ' at hour ')}</b><br>
+                            <span class="highlight">Average Payments:</span> ${time.avgPayments.toFixed(2)}
+                        </p>
+                    `).join('')}
+                    <p><span class="highlight">Best day Overall:</span> <b>${bestDay}</b><br>
+                    <span class="highlight">Average Payments:</span> ${lowestDayTraffic.toFixed(2)}</p>
+                `;
 
-            const sortedHours = Object.keys(hourDayMap)
-                .map(key => {
-                    const avgPayments = hourDayMap[key].sum / hourDayMap[key].count;
-                    return { key, avgPayments };
-                })
-                .sort((a, b) => a.avgPayments - b.avgPayments); 
-
-            const top3Times = sortedHours.slice(0, 5);
-
-            let bestDay = null;
-            let lowestDayTraffic = Infinity;
-
-            for (const day in dayMap) {
-                const avgDayPayments = dayMap[day].sum / dayMap[day].count;
-                if (avgDayPayments < lowestDayTraffic) {
-                    lowestDayTraffic = avgDayPayments;
-                    bestDay = day;
-                }
+            } catch (error) {
+                console.error('Analysis error:', error);
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}<br>
+                        <br>
+                        <strong>Troubleshooting:</strong><br>
+                        • Make sure your CSV has the correct column headers<br>
+                        • Expected columns: "Created Hour of Day", "Created Day of Week", "Payouts Count of Payouts"<br>
+                        • Check the browser console for more details
+                    </div>
+                `;
+            } finally {
+                // Reset button
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze';
             }
-
-            const resultDiv = document.getElementById('result');
+        },
+        error: function(error) {
+            console.error('CSV parsing error:', error);
+            resultDiv.style.display = 'block';
             resultDiv.innerHTML = `
-                <h2>Best Times for Maintenance</h2>
-                <p>The best times for maintenance based on the lowest average traffic are:</p>
-                ${top3Times.map((time, index) => `
-                    <p class="option${index + 1}">
-                        <span class="highlight">Option ${index + 1}:</span><b> ${time.key.replace('-', ' at ')}<br>
-                        <span class="highlight">Average Payments:</span> ${time.avgPayments.toFixed(2)}
-                    </p>
-                `).join('')}
-                <p><span class="highlight">Worst day Overall:</span> ${bestDay}<br>
-                <span class="highlight">Average Payments:</span> ${lowestDayTraffic.toFixed(2)}</p>
+                <div class="error">
+                    <strong>CSV Parsing Error:</strong> ${error.message}<br>
+                    Please check that your file is a valid CSV.
+                </div>
             `;
+            analyzeBtn.disabled = false;
+            analyzeBtn.textContent = 'Analyze';
         }
     });
 }
